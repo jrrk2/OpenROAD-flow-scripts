@@ -263,14 +263,45 @@ $(SDC_FILE_CLOCK_PERIOD): $(SDC_FILE)
 .PHONY: yosys-dependencies
 yosys-dependencies: $(YOSYS_DEPENDENCIES)
 
+# When USE_DECOMP_SYNTH=1, substitute our hardcaml-based synth for the
+# yosys+ABC pipeline.  Hard-fails on any error — yosys is for explicit
+# oracle/comparison runs, never a silent fallback.
+DECOMP_SHIM ?= $(HOME)/System-Verilog-decompiler/_build/default/synth_orfs_shim.exe
+
 .PHONY: do-yosys
+ifeq ($(USE_DECOMP_SYNTH),1)
+do-yosys:
+	@echo "[USE_DECOMP_SYNTH=1] running hardcaml-based synth (no yosys/ABC)"
+	@if [ ! -x "$(DECOMP_SHIM)" ]; then \
+	  echo "ERROR: DECOMP_SHIM not executable: $(DECOMP_SHIM)"; exit 1; \
+	fi
+	mkdir -p $(RESULTS_DIR) $(LOG_DIR)
+	$(DECOMP_SHIM) $(DESIGN_NAME) $(RESULTS_DIR)/1_2_yosys.v $(VERILOG_FILES) \
+	  2>&1 | tee $(LOG_DIR)/1_2_decomp_synth.log
+	@if ! grep -q '^\[synth_orfs_shim\] OK' $(LOG_DIR)/1_2_decomp_synth.log; then \
+	  echo "ERROR: decomp synth shim did not report OK — failing"; exit 1; \
+	fi
+	@if [ -f $(RESULTS_DIR)/1_2_yosys.v.sdc ]; then \
+	  cp $(RESULTS_DIR)/1_2_yosys.v.sdc $(RESULTS_DIR)/1_2_yosys.sdc; \
+	else \
+	  cp $(SDC_FILE) $(RESULTS_DIR)/1_2_yosys.sdc; \
+	fi
+else
 do-yosys: yosys-dependencies
 	$(SCRIPTS_DIR)/synth.sh $(SYNTH_SCRIPT) $(LOG_DIR)/1_2_yosys.log
 	cp $(SDC_FILE) $(RESULTS_DIR)/1_2_yosys.sdc
+endif
 
 .PHONY: do-yosys-canonicalize
+ifeq ($(USE_DECOMP_SYNTH),1)
+do-yosys-canonicalize:
+	@echo "[USE_DECOMP_SYNTH=1] skipping yosys canonicalize (shim writes 1_2_yosys.v directly)"
+	mkdir -p $(RESULTS_DIR)
+	@touch $(RESULTS_DIR)/1_1_yosys_canonicalize.rtlil
+else
 do-yosys-canonicalize: yosys-dependencies
 	$(SCRIPTS_DIR)/synth.sh $(SCRIPTS_DIR)/synth_canonicalize.tcl $(LOG_DIR)/1_1_yosys_canonicalize.log
+endif
 
 $(RESULTS_DIR)/1_1_yosys_canonicalize.rtlil: $(YOSYS_DEPENDENCIES)
 	$(UNSET_AND_MAKE) do-yosys-canonicalize

@@ -482,7 +482,7 @@ case "${os}" in
             _installPipCommon
         fi
         ;;
-    "Ubuntu" | "Debian GNU/Linux rodete" )
+    "Ubuntu" | "Debian GNU/Linux rodete" | "KDE neon" )
         version=$(awk -F= '/^VERSION_ID/{print $2}' /etc/os-release | sed 's/"//g')
         if [[ -z ${version} ]]; then
             version=$(awk -F= '/^VERSION_CODENAME/{print $2}' /etc/os-release | sed 's/"//g')
